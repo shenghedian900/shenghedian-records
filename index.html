@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>聖何殿辦事記錄</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+    body { background-color: #f8f6f0; color: #2d3748; padding-bottom: 50px; }
+    
+    header { background-color: #8b1e1e; color: #ffffff; padding: 14px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); flex-wrap: wrap; gap: 10px; }
+    header h1 { font-size: 1.25rem; font-weight: bold; }
+    .header-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    
+    .status-badge { font-size: 0.75rem; padding: 4px 8px; border-radius: 4px; font-weight: bold; background: rgba(255,255,255,0.2); }
+    .status-badge.admin { background: #38a169; }
+
+    .container { max-width: 860px; margin: 20px auto; padding: 0 16px; }
+    .card { background-color: #ffffff; border-radius: 8px; border: 1px solid #e2e8f0; padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    .card h2 { font-size: 1.15rem; color: #8b1e1e; margin-bottom: 14px; border-left: 4px solid #8b1e1e; padding-left: 8px; }
+    
+    .edit-mode-badge { display: none; background-color: #feebc8; color: #c05621; padding: 4px 10px; border-radius: 4px; font-size: 0.85rem; font-weight: bold; margin-bottom: 12px; }
+    
+    .form-group { margin-bottom: 14px; }
+    label { display: block; font-size: 0.9rem; font-weight: 600; margin-bottom: 6px; }
+    input { width: 100%; padding: 10px; border: 1px solid #cbd5e0; border-radius: 6px; font-size: 0.95rem; }
+    
+    .btn { display: inline-block; background-color: #8b1e1e; color: #ffffff; border: none; padding: 10px 18px; border-radius: 6px; font-size: 0.95rem; cursor: pointer; font-weight: 600; }
+    .btn:hover { background-color: #6e1616; }
+    .btn-secondary { background-color: #4a5568; }
+    .btn-secondary:hover { background-color: #2d3748; }
+    .btn-danger { background-color: #e53e3e; }
+    .btn-danger:hover { background-color: #c53030; }
+    .btn-edit { background-color: #3182ce; }
+    .btn-edit:hover { background-color: #2b6cb0; }
+    .btn:disabled { background-color: #a0aec0; cursor: not-allowed; }
+    
+    .filter-panel { background-color: #fdfaf6; border: 1px dashed #d6bc97; border-radius: 6px; padding: 14px; margin-bottom: 16px; }
+    .date-filter-grid { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: end; margin-top: 10px; }
+    
+    .record-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 16px; margin-top: 12px; }
+    .record-card { border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; background-color: #ffffff; display: flex; flex-direction: column; }
+    
+    .record-img-box { width: 100%; height: 180px; background-color: #edf2f7; display: flex; align-items: center; justify-content: center; cursor: pointer; overflow: hidden; }
+    .record-img { width: 100%; height: 100%; object-fit: cover; }
+    .no-img-text { color: #a0aec0; font-size: 0.85rem; font-weight: bold; }
+    
+    .record-body { padding: 12px; flex: 1; display: flex; flex-direction: column; justify-content: space-between; }
+    .record-tag { display: inline-block; background-color: #feebc8; color: #7b341e; padding: 2px 6px; border-radius: 4px; font-size: 0.8rem; margin-right: 4px; margin-bottom: 4px; }
+    
+    .modal { display: none; position: fixed; z-index: 999; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.85); justify-content: center; align-items: center; }
+    .modal img { max-width: 95%; max-height: 95%; border-radius: 6px; }
+
+    #loading-indicator { display: none; text-align: center; padding: 20px; font-weight: bold; color: #8b1e1e; }
+
+    @media (max-width: 600px) {
+      .date-filter-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div style="display: flex; align-items: center; gap: 10px;">
+    <h1>聖何殿辦事記錄</h1>
+    <span id="role-badge" class="status-badge">訪客模式 (唯讀)</span>
+  </div>
+  <div class="header-actions">
+    <button type="button" id="btn-login" class="btn btn-secondary" onclick="handleAuthToggle()" style="padding: 6px 12px; font-size: 0.8rem;">管理員解鎖</button>
+  </div>
+</header>
+
+<div class="container">
+  
+  <!-- 新增／編輯表單 -->
+  <div class="card" id="form-card" style="display: none;">
+    <h2 id="form-title">新增每週辦事整理紀錄</h2>
+    
+    <div id="edit-indicator" class="edit-mode-badge">
+      ⚠️ 正在編輯既有紀錄（若不更換照片，不需重新選檔）
+    </div>
+
+    <input type="hidden" id="edit-id" value="">
+    <input type="hidden" id="original-image" value="">
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+      <div class="form-group">
+        <label for="srv-date">辦事日期</label>
+        <input type="date" id="srv-date">
+      </div>
+      <div class="form-group">
+        <label for="srv-deity">神明</label>
+        <input type="text" id="srv-deity">
+      </div>
+    </div>
+    <div class="form-group">
+      <label for="srv-names">關鍵字（以頓號或空格隔開）</label>
+      <input type="text" id="srv-names">
+    </div>
+    <div class="form-group">
+      <label for="srv-photo" id="photo-label">上傳手寫整理照片</label>
+      <input type="file" id="srv-photo" accept="image/*">
+    </div>
+    
+    <div style="display: flex; gap: 10px;">
+      <button type="button" class="btn" id="submit-btn" onclick="saveServiceRecord()">儲存</button>
+      <button type="button" class="btn btn-secondary" id="cancel-edit-btn" onclick="cancelEdit()" style="display: none;">取消編輯</button>
+    </div>
+  </div>
+
+  <!-- 檢索區塊 -->
+  <div class="card">
+    <h2>辦事歷史資料檢索</h2>
+    
+    <div class="filter-panel">
+      <div class="form-group" style="margin-bottom: 8px;">
+        <label for="search-keyword">文字關鍵字</label>
+        <input type="text" id="search-keyword" oninput="renderRecords()">
+      </div>
+      
+      <div class="date-filter-grid">
+        <div>
+          <label for="search-date-start" style="font-size:0.8rem; color:#4a5568;">開始日期</label>
+          <input type="date" id="search-date-start" onchange="renderRecords()">
+        </div>
+        <div>
+          <label for="search-date-end" style="font-size:0.8rem; color:#4a5568;">結束日期</label>
+          <input type="date" id="search-date-end" onchange="renderRecords()">
+        </div>
+        <div>
+          <button type="button" class="btn btn-secondary" onclick="resetSearch()" style="padding: 9px 12px; font-size: 0.85rem; width: 100%;">重設條件</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="loading-indicator">資料讀取中，請稍候...</div>
+    <div class="record-grid" id="records-container"></div>
+  </div>
+
+</div>
+
+<!-- 圖片點擊放大彈窗 -->
+<div id="imgModal" class="modal" onclick="closeModal()">
+  <img id="modalImg" src="" alt="放大預覽">
+</div>
+
+<script>
+  var API_URL = "https://script.google.com/macros/s/AKfycbxWxutHfAPAhEiZc3SpKo_xhRAJuCEZofLYsZSwL1xPWJsoAa_9wpkT_XXaDknvmev9/exec";
+
+  var isAdmin = false;
+  var currentPassword = "";
+  var cachedRecords = [];
+
+  // 將任何格式的日期（包括 GMT 時間文字）轉換為純數字 YYYY-MM-DD
+  function formatDateToNumeric(val) {
+    if (!val) return '';
+    var str = String(val).trim();
+    
+    // 如果本來就是 2026-10-28 格式，直接回傳
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+      return str;
+    }
+    
+    var d = new Date(str);
+    if (!isNaN(d.getTime())) {
+      var year = d.getFullYear();
+      var month = String(d.getMonth() + 1).padStart(2, '0');
+      var day = String(d.getDate()).padStart(2, '0');
+      return year + '-' + month + '-' + day;
+    }
+    return str;
+  }
+
+  window.addEventListener('DOMContentLoaded', function() {
+    resetForm();
+    updateAuthUI();
+    fetchRecords();
+  });
+
+  function handleAuthToggle() {
+    if (isAdmin) {
+      if (confirm('確定要退出管理員模式嗎？')) {
+        isAdmin = false;
+        currentPassword = "";
+        resetForm();
+        updateAuthUI();
+        renderRecords();
+      }
+    } else {
+      var pwd = prompt('請輸入管理員密碼');
+      if (pwd === null) return;
+      var cleanPwd = pwd.trim();
+      if (cleanPwd === '') {
+        alert('密碼不能為空！');
+        return;
+      }
+
+      var btnLogin = document.getElementById('btn-login');
+      btnLogin.disabled = true;
+      btnLogin.innerText = '驗證中...';
+
+      // 向 Apps Script 後台發送密碼即時驗證請求
+      fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ action: "verify", password: cleanPwd })
+      })
+      .then(function(res) { return res.json(); })
+      .then(function(res) {
+        btnLogin.disabled = false;
+        if (res.status === 'success') {
+          isAdmin = true;
+          currentPassword = cleanPwd;
+          updateAuthUI();
+          renderRecords();
+          alert('驗證成功，已進入管理員模式！');
+        } else {
+          alert('密碼錯誤！無法進入管理員模式。');
+          updateAuthUI();
+        }
+      })
+      .catch(function(err) {
+        btnLogin.disabled = false;
+        updateAuthUI();
+        alert('驗證連線失敗，請檢查網路或稍後再試。');
+      });
+    }
+  }
+
+  function updateAuthUI() {
+    var roleBadge = document.getElementById('role-badge');
+    var btnLogin = document.getElementById('btn-login');
+    var formCard = document.getElementById('form-card');
+
+    if (isAdmin) {
+      roleBadge.innerText = '管理員模式 (可編輯)';
+      roleBadge.className = 'status-badge admin';
+      btnLogin.innerText = '退出管理';
+      formCard.style.display = 'block';
+    } else {
+      roleBadge.innerText = '訪客模式 (唯讀)';
+      roleBadge.className = 'status-badge';
+      btnLogin.innerText = '管理員解鎖';
+      formCard.style.display = 'none';
+    }
+  }
+
+  function fetchRecords() {
+    var loading = document.getElementById('loading-indicator');
+    loading.style.display = 'block';
+    
+    fetch(API_URL)
+      .then(function(res) { return res.json(); })
+      .then(function(res) {
+        loading.style.display = 'none';
+        if (res.status === 'success') {
+          cachedRecords = (res.data || []).map(function(item) {
+            item.date = formatDateToNumeric(item.date);
+            return item;
+          });
+          renderRecords();
+        } else {
+          alert('讀取失敗：' + res.message);
+        }
+      })
+      .catch(function(err) {
+        loading.style.display = 'none';
+        console.error(err);
+      });
+  }
+
+  function resetForm() {
+    document.getElementById('edit-id').value = '';
+    document.getElementById('original-image').value = '';
+    document.getElementById('srv-date').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('srv-deity').value = '';
+    document.getElementById('srv-names').value = '';
+    document.getElementById('srv-photo').value = '';
+    
+    document.getElementById('form-title').innerText = '新增每週辦事整理紀錄';
+    document.getElementById('edit-indicator').style.display = 'none';
+    document.getElementById('submit-btn').innerText = '儲存';
+    document.getElementById('submit-btn').disabled = false;
+    document.getElementById('cancel-edit-btn').style.display = 'none';
+    document.getElementById('photo-label').innerText = '上傳手寫整理照片';
+  }
+
+  function editRecord(id) {
+    if (!isAdmin) return;
+    var rec = cachedRecords.find(function(r) { return r.id === Number(id); });
+    if (!rec) return;
+
+    document.getElementById('edit-id').value = rec.id;
+    document.getElementById('srv-date').value = formatDateToNumeric(rec.date);
+    document.getElementById('srv-deity').value = rec.deity || '';
+    document.getElementById('srv-names').value = rec.names || '';
+    document.getElementById('original-image').value = rec.image || '';
+    document.getElementById('srv-photo').value = '';
+
+    document.getElementById('form-title').innerText = '修改辦事紀錄';
+    document.getElementById('edit-indicator').style.display = 'block';
+    document.getElementById('submit-btn').innerText = '更新儲存';
+    document.getElementById('cancel-edit-btn').style.display = 'inline-block';
+    document.getElementById('photo-label').innerText = rec.image ? '更換手寫整理照片（不選則保留原照片）' : '補充上傳手寫整理照片';
+
+    document.getElementById('form-card').scrollIntoView({ behavior: 'smooth' });
+  }
+
+  function cancelEdit() {
+    resetForm();
+  }
+
+  function saveServiceRecord() {
+    if (!isAdmin) {
+      alert('請先以管理員身分登入！');
+      return;
+    }
+
+    var editId = document.getElementById('edit-id').value;
+    var originalImage = document.getElementById('original-image').value;
+    var date = formatDateToNumeric(document.getElementById('srv-date').value);
+    var deity = document.getElementById('srv-deity').value.trim();
+    var names = document.getElementById('srv-names').value.trim();
+    var fileInput = document.getElementById('srv-photo');
+
+    if (!date) {
+      alert('請選擇辦事日期！');
+      return;
+    }
+    if (!names) {
+      alert('請輸入關鍵字！');
+      return;
+    }
+
+    var submitBtn = document.getElementById('submit-btn');
+    submitBtn.disabled = true;
+    submitBtn.innerText = '處理中...';
+
+    if (fileInput.files && fileInput.files[0]) {
+      var file = fileInput.files[0];
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        var img = new Image();
+        img.src = e.target.result;
+        img.onload = function() {
+          var canvas = document.createElement('canvas');
+          var maxDim = 1000;
+          var width = img.width;
+          var height = img.height;
+          if (width > height && width > maxDim) {
+            height = Math.round(height * (maxDim / width));
+            width = maxDim;
+          } else if (height > maxDim) {
+            width = Math.round(width * (maxDim / height));
+            height = maxDim;
+          }
+          canvas.width = width;
+          canvas.height = height;
+          var ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          var compressedDataUrl = canvas.toDataURL('image/jpeg', 0.6);
+
+          sendPayload(editId, date, deity, names, compressedDataUrl);
+        };
+      };
+      reader.readAsDataURL(file);
+    } else {
+      sendPayload(editId, date, deity, names, originalImage || null);
+    }
+  }
+
+  function sendPayload(editId, date, deity, names, image) {
+    var payload = {
+      action: editId ? "update" : "create",
+      password: currentPassword,
+      id: editId ? Number(editId) : Date.now(),
+      date: date,
+      deity: deity,
+      names: names,
+      image: image
+    };
+
+    fetch(API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8"
+      },
+      body: JSON.stringify(payload)
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(res) {
+      if (res.status === 'success') {
+        alert('雲端同步儲存成功！');
+        resetForm();
+        fetchRecords();
+      } else {
+        alert('儲存失敗：' + res.message);
+        document.getElementById('submit-btn').disabled = false;
+        document.getElementById('submit-btn').innerText = editId ? '更新儲存' : '儲存';
+      }
+    })
+    .catch(function(err) {
+      setTimeout(function() {
+        resetForm();
+        fetchRecords();
+        alert('紀錄已送出處理！');
+      }, 1500);
+    });
+  }
+
+  function deleteRecord(id) {
+    if (!isAdmin) return;
+    if (!confirm('確定要自雲端資料庫永久刪除這筆紀錄嗎？')) return;
+
+    var payload = {
+      action: "delete",
+      password: currentPassword,
+      id: Number(id)
+    };
+
+    fetch(API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8"
+      },
+      body: JSON.stringify(payload)
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(res) {
+      if (res.status === 'success') {
+        alert('紀錄已刪除！');
+        if (document.getElementById('edit-id').value === String(id)) {
+          resetForm();
+        }
+        fetchRecords();
+      } else {
+        alert('刪除失敗：' + res.message);
+      }
+    })
+    .catch(function(err) {
+      setTimeout(function() {
+        if (document.getElementById('edit-id').value === String(id)) {
+          resetForm();
+        }
+        fetchRecords();
+      }, 1500);
+    });
+  }
+
+  function resetSearch() {
+    document.getElementById('search-keyword').value = '';
+    document.getElementById('search-date-start').value = '';
+    document.getElementById('search-date-end').value = '';
+    renderRecords();
+  }
+
+  function renderRecords() {
+    var keywordEl = document.getElementById('search-keyword');
+    var startEl = document.getElementById('search-date-start');
+    var endEl = document.getElementById('search-date-end');
+    var container = document.getElementById('records-container');
+
+    if (!container) return;
+
+    var keyword = keywordEl ? keywordEl.value.toLowerCase().trim() : '';
+    var startDate = startEl ? startEl.value : '';
+    var endDate = endEl ? endEl.value : '';
+
+    container.innerHTML = '';
+
+    var filtered = cachedRecords.filter(function(r) {
+      var displayDate = formatDateToNumeric(r.date);
+      var matchKeyword = !keyword || 
+        (r.names && r.names.toLowerCase().indexOf(keyword) !== -1) ||
+        (r.deity && r.deity.toLowerCase().indexOf(keyword) !== -1) ||
+        (displayDate && displayDate.indexOf(keyword) !== -1);
+
+      var matchDate = true;
+      if (startDate && displayDate < startDate) matchDate = false;
+      if (endDate && displayDate > endDate) matchDate = false;
+
+      return matchKeyword && matchDate;
+    });
+
+    if (filtered.length === 0) {
+      container.innerHTML = '<p style="color:#a0aec0; grid-column: 1/-1; text-align:center; padding: 20px 0;">查無符合條件的辦事紀錄。</p>';
+      return;
+    }
+
+    filtered.forEach(function(r) {
+      var card = document.createElement('div');
+      card.className = 'record-card';
+
+      var topHtml = '';
+      if (r.image) {
+        topHtml = '<div class="record-img-box" onclick="openModal(' + r.id + ')">' +
+                  '<img class="record-img" src="' + r.image + '" alt="照片">' +
+                  '</div>';
+      } else {
+        topHtml = '<div class="record-img-box">' +
+                  '<span class="no-img-text">（無手寫照片存檔）</span>' +
+                  '</div>';
+      }
+
+      var nameTags = r.names.split(/[,、\s]+/).filter(Boolean).map(function(n) {
+        return '<span class="record-tag">' + n + '</span>';
+      }).join('');
+
+      var actionsHtml = '';
+      if (isAdmin) {
+        actionsHtml = 
+          '<div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; border-top: 1px solid #e2e8f0; padding-top: 8px;">' +
+            '<button type="button" class="btn btn-edit" style="padding:4px 8px; font-size:0.75rem;" onclick="editRecord(' + r.id + ')">編輯</button>' +
+            '<button type="button" class="btn btn-danger" style="padding:4px 8px; font-size:0.75rem;" onclick="deleteRecord(' + r.id + ')">刪除</button>' +
+          '</div>';
+      }
+
+      var formattedDate = formatDateToNumeric(r.date);
+
+      card.innerHTML = topHtml +
+        '<div class="record-body">' +
+          '<div>' +
+            '<div style="font-size:0.85rem; color:#718096; margin-bottom:6px; font-weight:600;">' +
+              '📅 ' + formattedDate + (r.deity ? ' ｜ ' + r.deity : '') +
+            '</div>' +
+            '<div style="margin-bottom:8px;">' + nameTags + '</div>' +
+          '</div>' +
+          actionsHtml +
+        '</div>';
+
+      container.appendChild(card);
+    });
+  }
+
+  function openModal(recordId) {
+    var target = cachedRecords.find(function(r) { return r.id === Number(recordId); });
+    if (target && target.image) {
+      var modalImg = document.getElementById('modalImg');
+      var imgModal = document.getElementById('imgModal');
+      modalImg.src = target.image;
+      imgModal.style.display = 'flex';
+    }
+  }
+
+  function closeModal() {
+    var imgModal = document.getElementById('imgModal');
+    if (imgModal) {
+      imgModal.style.display = 'none';
+    }
+  }
+</script>
+</body>
+</html>
